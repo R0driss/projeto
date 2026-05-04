@@ -1,97 +1,139 @@
-from flask import Flask, jsonify, request, render_template, redirect, url_for
+from flask import Flask, jsonify, request, render_template, redirect, url_for, session
 import uuid
+import json
+import os
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+app.secret_key = "segredo123"
 
-# Banco de dados simples em memória
-estoque = [
-    {"id": 1, "nome_peca": "Pneu Traseiro 90/90-18", "quantidade": 5, "preco": 180.0},
-    {"id": 2, "nome_peca": "Óleo de Motor 1L", "quantidade": 12, "preco": 35.0},
-    {"id": 3, "nome_peca": "Kit Relação", "quantidade": 3, "preco": 120.0}
+ARQUIVO = "estoque.json"
+
+# ========================
+# USUÁRIOS (SIMPLES)
+# ========================
+usuarios = [
+    {"username": "admin", "senha": generate_password_hash("123"), "tipo": "admin"},
+    {"username": "cliente", "senha": generate_password_hash("123"), "tipo": "cliente"}
 ]
 
-ordens = []
+# ========================
+# LOGIN
+# ========================
+@app.route('/login', methods=['POST'])
+def login():
+    dados = request.form
 
-# ------------------- TELA -------------------
+    for u in usuarios:
+        if u["username"] == dados.get("username") and check_password_hash(u["senha"], dados.get("senha")):
+            session["usuario"] = {
+                "username": u["username"],
+                "tipo": u["tipo"]
+            }
+            return redirect(url_for('pagina'))
 
+    return "Login inválido", 401
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('pagina'))
+
+# ========================
+# FUNÇÕES JSON
+# ========================
+def carregar_estoque():
+    if not os.path.exists(ARQUIVO):
+        return []
+    with open(ARQUIVO, "r") as f:
+        return json.load(f)
+
+
+def salvar_estoque(dados):
+    with open(ARQUIVO, "w") as f:
+        json.dump(dados, f, indent=4)
+
+# ========================
+# TELA
+# ========================
 @app.route('/')
 def pagina():
-    return render_template('index.html', estoque=estoque)
+    estoque = carregar_estoque()
+    usuario = session.get("usuario")
+    return render_template('index.html', estoque=estoque, usuario=usuario)
 
-
-# ------------------- ESTOQUE -------------------
-
+# ========================
+# ESTOQUE
+# ========================
 @app.route('/estoque', methods=['GET'])
 def ver_estoque():
+    estoque = carregar_estoque()
     return jsonify(estoque)
 
 
 @app.route('/estoque', methods=['POST'])
 def cadastrar_peca():
 
-    if request.is_json:
-        dados = request.json
-        nome = dados.get("nome_peca")
-        quantidade = dados.get("quantidade", 0)
-        preco = dados.get("preco", 0.0)
-    else:
-        nome = request.form.get("nome_peca")
-        quantidade = int(request.form.get("quantidade", 0))
-        preco = float(request.form.get("preco", 0.0))
+    usuario = session.get("usuario")
+    if not usuario or usuario["tipo"] != "admin":
+        return "Acesso negado", 403
+
+    estoque = carregar_estoque()
+    dados = request.form
 
     nova_peca = {
         "id": len(estoque) + 1,
-        "nome_peca": nome,
-        "quantidade": quantidade,
-        "preco": preco
+        "nome_peca": dados.get("nome_peca"),
+        "quantidade": int(dados.get("quantidade", 0)),
+        "preco": float(dados.get("preco", 0.0))
     }
 
     estoque.append(nova_peca)
+    salvar_estoque(estoque)
 
-    # REDIRECT CORRIGIDO (evita erro do navegador)
     return redirect(url_for('pagina'))
 
 
-@app.route('/estoque/<int:id>', methods=['DELETE'])
+@app.route('/estoque/<int:id>', methods=['POST'])
 def deletar_peca(id):
-    for item in estoque:
-        if item["id"] == id:
-            estoque.remove(item)
-            return jsonify({"msg": "removido"})
 
-    return jsonify({"erro": "não encontrado"}), 404
+    usuario = session.get("usuario")
+    if not usuario or usuario["tipo"] != "admin":
+        return "Acesso negado", 403
 
+    estoque = carregar_estoque()
+    estoque = [item for item in estoque if item["id"] != id]
 
-# ------------------- ORDENS -------------------
+    salvar_estoque(estoque)
 
+    return redirect(url_for('pagina'))
+
+# ========================
+# ORDENS
+# ========================
 @app.route('/os', methods=['POST'])
 def criar_ordem():
+
+    usuario = session.get("usuario")
+    if not usuario:
+        return "Precisa estar logado", 401
+
     dados = request.json
 
     ordem = {
         "id": str(uuid.uuid4())[:8],
-        "cliente": dados.get("cliente"),
+        "cliente": usuario["username"],
         "moto": dados.get("moto"),
         "problema": dados.get("descricao"),
         "fotos": [],
         "status": "em andamento"
     }
 
-    ordens.append(ordem)
     return jsonify(ordem), 201
 
-
-@app.route('/os/<id>/foto', methods=['PATCH'])
-def add_foto(id):
-    for ordem in ordens:
-        if ordem["id"] == id:
-            ordem["fotos"].append("foto.jpg")
-            return jsonify({"msg": "foto adicionada", "ordem": ordem})
-
-    return jsonify({"erro": "ordem não encontrada"}), 404
-
-
-# ------------------- RODAR -------------------
-
-if __name__ == '__main__':
-    app.run()
+# ========================
+# RODAR
+# ========================
+if __name__ == '__main__': 
+    app.run(host='0.0.0.0', port=5000)

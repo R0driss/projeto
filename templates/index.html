@@ -1,47 +1,59 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="pt-br">
 <head>
-    <title>Estoque</title>
+    <meta charset="UTF-8">
+    <title>Oficina - Estoque</title>
 </head>
 <body>
 
-<h2>Cadastrar Peça</h2>
+    <h1>Oficina</h1>
 
-<form action="/estoque" method="post">
-    <input type="text" name="nome_peca" placeholder="Nome da peça"><br><br>
-    <input type="number" name="quantidade" placeholder="Quantidade"><br><br>
-    <input type="number" step="0.01" name="preco" placeholder="Preço"><br><br>
-    <button type="submit">Cadastrar</button>
-</form>
+    <!-- LOGIN -->
+    {% if not usuario %}
+        <h2>Login</h2>
+        <form action="/login" method="POST">
+            <input name="username" placeholder="Usuário" required>
+            <input name="senha" type="password" placeholder="Senha" required>
+            <button type="submit">Entrar</button>
+        </form>
+    {% else %}
+        <p>Logado como: {{ usuario.username }} ({{ usuario.tipo }})</p>
+        <a href="/logout">Sair</a>
+    {% endif %}
 
-<hr>
+    <hr>
 
-<h2>Peças no estoque</h2>
+    <h1>Estoque de Peças</h1>
 
-<ul>
-    {% for item in estoque %}
-        <li>
-            ID: {{ item.id }} - {{ item.nome_peca }} ({{ item.quantidade }})
-        </li>
-    {% endfor %}
-</ul>
+    <!-- LISTA DE PEÇAS -->
+    <ul>
+        {% for item in estoque %}
+            <li>
+                {{ item.nome_peca }} - {{ item.quantidade }} unidades - R$ {{ item.preco }}
 
-<hr>
+                <!-- BOTÃO DE APAGAR (SÓ ADMIN) -->
+                {% if usuario and usuario.tipo == 'admin' %}
+                <form action="/estoque/{{ item.id }}" method="post" style="display:inline;">
+                    <button type="submit">Apagar</button>
+                </form>
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ul>
 
-<h2>Apagar peça</h2>
+    <hr>
 
-<input type="number" id="id_apagar" placeholder="Digite o ID da peça">
-<button onclick="apagar()">Apagar</button>
+    <!-- FORMULÁRIO DE ADICIONAR (SÓ ADMIN) -->
+    {% if usuario and usuario.tipo == 'admin' %}
+        <h2>Adicionar Peça</h2>
 
-<script>
-function apagar() {
-    let id = document.getElementById("id_apagar").value;
-
-    fetch('/estoque/' + id, {
-        method: 'DELETE'
-    }).then(() => location.reload());
-}
-</script>
+        <form action="/estoque" method="post">
+            <input type="text" name="nome_peca" placeholder="Nome da peça" required>
+            <input type="number" name="quantidade" placeholder="Quantidade" required>
+            <input type="number" step="0.01" name="preco" placeholder="Preço" required>
+            <button type="submit">Adicionar</button>
+        </form>
+    {% endif %}
 
 </body>
 </html>
